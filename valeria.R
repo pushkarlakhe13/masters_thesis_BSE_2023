@@ -1,7 +1,7 @@
 library(readxl)
 library(tidyverse)
 library(dplyr)
-library(writexl)
+library(stringdist)
 
 setwd("/Users/valeria/Google Drive/Ph.D./BSE/Thesis/masters_thesis_BSE_2023/")
 
@@ -132,8 +132,6 @@ df_2009 <- df_2009 %>%
 
 df <- bind_rows(df_1996, df_1999, df_2004, df_2009)
 
-unique(df$MyNeta_education)
-
 ################################################################################
 
 # Turn education to ordinal variable
@@ -145,4 +143,172 @@ df$education <- as.numeric(df$education)
 
 ################################################################################
 
-write_xlsx(df, "18.5.2023 - TCPD_GE_All_States_2023-5-18.xlsx")
+write_xlsx(df, "output/18.5.2023 - TCPD_GE_All_States_2023-5-18.xlsx")
+
+################################################################################
+
+shrug_districts <- as.data.frame(unique(df$district))
+colnames(shrug_districts) <- c("shrug_districts")
+
+gdp <- read_xlsx("data/gdp-details.xlsx", sheet = "Unapportioned")
+
+gdp <- gdp %>%
+  arrange(`Dist Name`) %>%
+  mutate(district = tolower(`Dist Name`)) %>%
+  rename(gdp_pc = `PER CAPITA CURRENT PRICES (1000 in Rs)`) %>%
+  select(district, Year, gdp_pc)
+
+gdp$Year <- gsub("\\s*\\(.*\\)", "", gdp$Year)
+
+gdp_districts <- as.data.frame(unique(gdp$district))
+colnames(gdp_districts) <- c("gdp_districts")
+
+common_districts <- intersect(gdp_districts$gdp_districts, shrug_districts$shrug_districts)
+
+# Remove common districts from gdp_districts
+gdp_districts_no_common <- as.data.frame(gdp_districts[!gdp_districts$gdp_districts %in% common_districts, ])
+colnames(gdp_districts_no_common) <- c("gdp_districts_no_common")
+
+# Remove common districts from shrug_districts
+shrug_districts_no_common <- as.data.frame(shrug_districts[!shrug_districts$shrug_districts %in% common_districts, ])
+colnames(shrug_districts_no_common) <- c("shrug_districts_no_common")
+
+potential_matches <- list()
+
+for (district1 in shrug_districts_no_common$shrug_districts_no_common) {
+  for (district2 in gdp_districts_no_common$gdp_districts_no_common) {
+    if (stringdist(district1, district2, method = "lv") <= 2) {
+      potential_matches[[length(potential_matches) + 1]] <- c(district1, district2)
+    }
+  }
+}
+
+# Print out potential matches
+for (match in potential_matches) {
+  print(paste("Potential match:", match[1], "-", match[2]))
+}
+
+################################################################################
+
+# Create an empty data frame for the lookup table
+lookup_table <- data.frame(
+  gdp_districts_no_common = character(),
+  shrug_districts_no_common = character(),
+  stringsAsFactors = FALSE
+)
+
+# Fill the lookup table with the potential matches
+for (match in potential_matches) {
+  lookup_table <- rbind(lookup_table, data.frame(
+    gdp_districts_no_common = match[2],
+    shrug_districts_no_common = match[1],
+    stringsAsFactors = FALSE
+  ))
+}
+
+# Merge gdp with lookup_table
+gdp <- merge(gdp, lookup_table, by.x = "district", by.y = "gdp_districts_no_common", all.x = TRUE)
+
+# Replace the original district names with the ones from df$district
+gdp$district <- ifelse(is.na(gdp$shrug_districts_no_common), gdp$district, gdp$shrug_districts_no_common)
+
+# Remove the extra column from the merge
+gdp$shrug_districts_no_common <- NULL
+
+gdp <- gdp %>%
+  mutate(gdp_pc = ifelse(gdp_pc == -1, NA, gdp_pc),
+         Year = as.numeric(Year)) %>%
+  mutate(gdp_pc = gdp_pc * 1000)
+
+################################################################################
+
+gdp_2 <- read_xlsx("data/gdp-details.xlsx", sheet = "1990-2011")
+
+gdp_2 <- gdp_2 %>%
+  arrange(DISTNAME) %>%
+  mutate(district = tolower(DISTNAME)) %>%
+  rename(gdp_pc = GROSS_PCI_CURP,
+         Year = YEAR) %>%
+  select(district, Year, gdp_pc)
+
+gdp_districts <- as.data.frame(unique(gdp_2$district))
+colnames(gdp_districts) <- c("gdp_districts")
+
+common_districts <- intersect(gdp_districts$gdp_districts, shrug_districts$shrug_districts)
+
+# Remove common districts from gdp_districts
+gdp_districts_no_common <- as.data.frame(gdp_districts[!gdp_districts$gdp_districts %in% common_districts, ])
+colnames(gdp_districts_no_common) <- c("gdp_districts_no_common")
+
+# Remove common districts from shrug_districts
+shrug_districts_no_common <- as.data.frame(shrug_districts[!shrug_districts$shrug_districts %in% common_districts, ])
+colnames(shrug_districts_no_common) <- c("shrug_districts_no_common")
+
+potential_matches <- list()
+
+for (district1 in shrug_districts_no_common$shrug_districts_no_common) {
+  for (district2 in gdp_districts_no_common$gdp_districts_no_common) {
+    if (stringdist(district1, district2, method = "lv") <= 2) {
+      potential_matches[[length(potential_matches) + 1]] <- c(district1, district2)
+    }
+  }
+}
+
+# Print out potential matches
+for (match in potential_matches) {
+  print(paste("Potential match:", match[1], "-", match[2]))
+}
+
+###########
+
+# Create an empty data frame for the lookup table
+lookup_table <- data.frame(
+  gdp_districts_no_common = character(),
+  shrug_districts_no_common = character(),
+  stringsAsFactors = FALSE
+)
+
+# Fill the lookup table with the potential matches
+for (match in potential_matches) {
+  lookup_table <- rbind(lookup_table, data.frame(
+    gdp_districts_no_common = match[2],
+    shrug_districts_no_common = match[1],
+    stringsAsFactors = FALSE
+  ))
+}
+
+# Merge gdp with lookup_table
+gdp_2 <- merge(gdp_2, lookup_table, by.x = "district", by.y = "gdp_districts_no_common", all.x = TRUE)
+
+# Replace the original district names with the ones from df$district
+gdp_2$district <- ifelse(is.na(gdp_2$shrug_districts_no_common), gdp_2$district, gdp_2$shrug_districts_no_common)
+
+# Remove the extra column from the merge
+gdp_2$shrug_districts_no_common <- NULL
+
+gdp_2 <- gdp_2 %>%
+  filter(gdp_pc != -1)
+
+###
+
+# Remove from gdp_2 any rows that also exist in gdp
+gdp <- gdp %>%
+  anti_join(gdp_2, by = c("district", "Year"))
+
+# Bind the rows of gdp and the filtered gdp_2 together
+gdp <- gdp %>%
+  bind_rows(gdp_2) %>%
+  arrange(district, Year)
+
+df <- df %>%
+  left_join(gdp, by = c("district", "Year"))
+
+# Create a new variable indicating missing GDP
+df <- df %>%
+  mutate(gdp_missing = ifelse(is.na(gdp_pc), 1, 0),
+         Sex = ifelse(Sex == "F", 0, 
+                      ifelse(Sex == "M", 1, NA)),
+         year_1996 = ifelse(Year == 1996, 1, 0),
+         year_1999 = ifelse(Year == 1999, 1, 0),
+         year_2004 = ifelse(Year == 2004, 1, 0),
+         year_2009 = ifelse(Year == 2009, 1, 0))
