@@ -1,8 +1,11 @@
 library(readxl)
 library(tidyverse)
 library(dplyr)
+library(writexl)
 
 setwd("/Users/valeria/Google Drive/Ph.D./BSE/Thesis/masters_thesis_BSE_2023/")
+
+### Merge nightlights and census and clean ###
 
 df <- read_csv("data/TCPD_GE_All_States_2023-5-18.csv")
 nl <- read_csv("data/shrug_nl_wide.csv")
@@ -42,7 +45,10 @@ df <- df %>%
   filter(!is.na(total_light1996) & (Position == 1 | Position == 2)) %>%
   arrange(district)
 
-# Define a custom function
+################################################################################
+
+# Predict population for missing years
+
 predict_population <- function(y1, y2, y3, x1 = 1991, x2 = 2001, x3 = 2011, predict_year = 2014){
   # Calculate slope and intercept
   years <- c(x1, x2, x3)
@@ -54,7 +60,6 @@ predict_population <- function(y1, y2, y3, x1 = 1991, x2 = 2001, x3 = 2011, pred
   return(m * predict_year + b)
 }
 
-# Use the function within mutate()
 df <- df %>%
   rowwise() %>%
   mutate(
@@ -66,7 +71,9 @@ df <- df %>%
   ) %>%
   ungroup()
 
-######################################
+################################################################################
+
+# Add vote_share_diff and population columns
 
 df_list <- split(df, df$Year)
 
@@ -74,6 +81,8 @@ df_1996 <- df_list[[1]]
 df_1999 <- df_list[[2]]
 df_2004 <- df_list[[3]]
 df_2009 <- df_list[[4]]
+
+### 1996 ### 
 
 df_vote_share_diff <- df_1996 %>%
   group_by(district) %>%
@@ -85,7 +94,7 @@ df_1996 <- df_1996 %>%
   mutate(vote_share_diff = ifelse(Position == 2, -vote_share_diff, vote_share_diff),
          population = pc96_pca_tot_p)
 
-###
+### 1999 ###
 
 df_vote_share_diff <- df_1999 %>%
   group_by(district) %>%
@@ -97,7 +106,7 @@ df_1999 <- df_1999 %>%
   mutate(vote_share_diff = ifelse(Position == 2, -vote_share_diff, vote_share_diff),
          population = pc99_pca_tot_p)
 
-###
+### 2004 ###
 
 df_vote_share_diff <- df_2004 %>%
   group_by(district) %>%
@@ -109,7 +118,7 @@ df_2004 <- df_2004 %>%
   mutate(vote_share_diff = ifelse(Position == 2, -vote_share_diff, vote_share_diff),
          population = pc04_pca_tot_p)
 
-###
+### 2009 ###
 
 df_vote_share_diff <- df_2009 %>%
   group_by(district) %>%
@@ -125,9 +134,15 @@ df <- bind_rows(df_1996, df_1999, df_2004, df_2009)
 
 unique(df$MyNeta_education)
 
-#########################
+################################################################################
+
+# Turn education to ordinal variable
 
 education_levels <- c("Illiterate", "Literate", "5th Pass", "8th Pass", "10th Pass", "12th Pass", "Graduate", "Graduate Professional", "Post Graduate", "Doctorate")
 df$education <- factor(df$MyNeta_education, levels = education_levels, ordered = TRUE)
 df$education[df$education == "Others"] <- NA
 df$education <- as.numeric(df$education)
+
+################################################################################
+
+write_xlsx(df, "18.5.2023 - TCPD_GE_All_States_2023-5-18.xlsx")
