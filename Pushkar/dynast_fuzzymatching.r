@@ -39,3 +39,47 @@ dynastic_counts_by_year <- X18_5_2023_TCPD_GE_All_States_2023_5_18 %>%
   summarise(count = sum(dynastic_dummy == 1, na.rm = TRUE))
 
 print(dynastic_counts_by_year)
+
+## Adding the rural and urban binary and percentages 
+rural_urban <- read_excel("Rural Population India Districrs .xlsx")
+matched_rural_urban <- read_csv("rural_urban_matches_with_persons.csv")
+# convert district column to lower case
+matched_rural_urban$District <- tolower(matched_rural_urban$District)
+X18_5_2023_TCPD_GE_All_States_2023_5_18$district <- tolower(X18_5_2023_TCPD_GE_All_States_2023_5_18$district)
+
+# merge the datasets
+merged_data <- merge(matched_rural_urban, X18_5_2023_TCPD_GE_All_States_2023_5_18, by.x = "District", by.y = "district")
+
+# check if the merge was successful
+str(merged_data)
+
+
+# create a new dataframe
+district_rural_urban_population_percentage <- merged_data %>%
+  select(district = District, total_population = population, persons_rural = persons) %>%
+  mutate(percent_rural = ifelse(persons_rural == 0, 0, (persons_rural / total_population) * 100),
+         percent_urban = 100 - percent_rural,
+         rural_urban = ifelse(percent_rural > 65, "RURAL", "URBAN"),
+         rural_urban_binary = ifelse(rural_urban == "RURAL", 0, 1))
+
+# display the new dataframe
+head(district_rural_urban_population_percentage)
+
+# Remove duplicate districts, keep the first instance
+district_rural_urban_population_percentage <- district_rural_urban_population_percentage %>%
+  distinct(district, .keep_all = TRUE)
+
+write.csv(district_rural_urban_population_percentage, "district_rural_urban_population_percentage.csv", row.names = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
