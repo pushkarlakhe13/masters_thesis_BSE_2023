@@ -1,7 +1,12 @@
 library(readxl)
+library(writexl)
 library(tidyverse)
 library(dplyr)
 library(stringdist)
+library(rdd)
+library(rdrobust)
+library(broom)
+library(rddtools)
 
 setwd("/Users/valeria/Google Drive/Ph.D./BSE/Thesis/masters_thesis_BSE_2023/")
 
@@ -92,7 +97,10 @@ df_1996 <- left_join(df_1996, df_vote_share_diff, by = "district", relationship 
 
 df_1996 <- df_1996 %>%
   mutate(vote_share_diff = ifelse(Position == 2, -vote_share_diff, vote_share_diff),
-         population = pc96_pca_tot_p)
+         population = pc96_pca_tot_p,
+         total_light_diff = total_light1999 - total_light1996,
+         max_light_diff = max_light1999 - max_light1996,
+         total_light_cal_diff = total_light_cal1999 - total_light_cal1996)
 
 ### 1999 ###
 
@@ -104,7 +112,10 @@ df_1999 <- left_join(df_1999, df_vote_share_diff, by = "district", relationship 
 
 df_1999 <- df_1999 %>%
   mutate(vote_share_diff = ifelse(Position == 2, -vote_share_diff, vote_share_diff),
-         population = pc99_pca_tot_p)
+         population = pc99_pca_tot_p,
+         total_light_diff = total_light2004 - total_light1999,
+         max_light_diff = max_light2004 - max_light1999,
+         total_light_cal_diff = total_light_cal2004 - total_light_cal1999)
 
 ### 2004 ###
 
@@ -116,7 +127,10 @@ df_2004 <- left_join(df_2004, df_vote_share_diff, by = "district", relationship 
 
 df_2004 <- df_2004 %>%
   mutate(vote_share_diff = ifelse(Position == 2, -vote_share_diff, vote_share_diff),
-         population = pc04_pca_tot_p)
+         population = pc04_pca_tot_p,
+         total_light_diff = total_light2009 - total_light2004,
+         max_light_diff = max_light2009 - max_light2004,
+         total_light_cal_diff = total_light_cal2009 - total_light_cal2004)
 
 ### 2009 ###
 
@@ -128,7 +142,10 @@ df_2009 <- left_join(df_2009, df_vote_share_diff, by = "district", relationship 
 
 df_2009 <- df_2009 %>%
   mutate(vote_share_diff = ifelse(Position == 2, -vote_share_diff, vote_share_diff),
-         population = pc09_pca_tot_p)
+         population = pc09_pca_tot_p,
+         total_light_diff = total_light2013 - total_light2009,
+         max_light_diff = max_light2013 - max_light2009,
+         total_light_cal_diff = total_light_cal2013 - total_light_cal2009)
 
 df <- bind_rows(df_1996, df_1999, df_2004, df_2009)
 
@@ -143,172 +160,146 @@ df$education <- as.numeric(df$education)
 
 ################################################################################
 
-write_xlsx(df, "output/18.5.2023 - TCPD_GE_All_States_2023-5-18.xlsx")
-
-################################################################################
-
-shrug_districts <- as.data.frame(unique(df$district))
-colnames(shrug_districts) <- c("shrug_districts")
-
-gdp <- read_xlsx("data/gdp-details.xlsx", sheet = "Unapportioned")
-
-gdp <- gdp %>%
-  arrange(`Dist Name`) %>%
-  mutate(district = tolower(`Dist Name`)) %>%
-  rename(gdp_pc = `PER CAPITA CURRENT PRICES (1000 in Rs)`) %>%
-  select(district, Year, gdp_pc)
-
-gdp$Year <- gsub("\\s*\\(.*\\)", "", gdp$Year)
-
-gdp_districts <- as.data.frame(unique(gdp$district))
-colnames(gdp_districts) <- c("gdp_districts")
-
-common_districts <- intersect(gdp_districts$gdp_districts, shrug_districts$shrug_districts)
-
-# Remove common districts from gdp_districts
-gdp_districts_no_common <- as.data.frame(gdp_districts[!gdp_districts$gdp_districts %in% common_districts, ])
-colnames(gdp_districts_no_common) <- c("gdp_districts_no_common")
-
-# Remove common districts from shrug_districts
-shrug_districts_no_common <- as.data.frame(shrug_districts[!shrug_districts$shrug_districts %in% common_districts, ])
-colnames(shrug_districts_no_common) <- c("shrug_districts_no_common")
-
-potential_matches <- list()
-
-for (district1 in shrug_districts_no_common$shrug_districts_no_common) {
-  for (district2 in gdp_districts_no_common$gdp_districts_no_common) {
-    if (stringdist(district1, district2, method = "lv") <= 2) {
-      potential_matches[[length(potential_matches) + 1]] <- c(district1, district2)
-    }
-  }
-}
-
-# Print out potential matches
-for (match in potential_matches) {
-  print(paste("Potential match:", match[1], "-", match[2]))
-}
-
-################################################################################
-
-# Create an empty data frame for the lookup table
-lookup_table <- data.frame(
-  gdp_districts_no_common = character(),
-  shrug_districts_no_common = character(),
-  stringsAsFactors = FALSE
-)
-
-# Fill the lookup table with the potential matches
-for (match in potential_matches) {
-  lookup_table <- rbind(lookup_table, data.frame(
-    gdp_districts_no_common = match[2],
-    shrug_districts_no_common = match[1],
-    stringsAsFactors = FALSE
-  ))
-}
-
-# Merge gdp with lookup_table
-gdp <- merge(gdp, lookup_table, by.x = "district", by.y = "gdp_districts_no_common", all.x = TRUE)
-
-# Replace the original district names with the ones from df$district
-gdp$district <- ifelse(is.na(gdp$shrug_districts_no_common), gdp$district, gdp$shrug_districts_no_common)
-
-# Remove the extra column from the merge
-gdp$shrug_districts_no_common <- NULL
-
-gdp <- gdp %>%
-  mutate(gdp_pc = ifelse(gdp_pc == -1, NA, gdp_pc),
-         Year = as.numeric(Year)) %>%
-  mutate(gdp_pc = gdp_pc * 1000)
-
-################################################################################
-
-gdp_2 <- read_xlsx("data/gdp-details.xlsx", sheet = "1990-2011")
-
-gdp_2 <- gdp_2 %>%
-  arrange(DISTNAME) %>%
-  mutate(district = tolower(DISTNAME)) %>%
-  rename(gdp_pc = GROSS_PCI_CURP,
-         Year = YEAR) %>%
-  select(district, Year, gdp_pc)
-
-gdp_districts <- as.data.frame(unique(gdp_2$district))
-colnames(gdp_districts) <- c("gdp_districts")
-
-common_districts <- intersect(gdp_districts$gdp_districts, shrug_districts$shrug_districts)
-
-# Remove common districts from gdp_districts
-gdp_districts_no_common <- as.data.frame(gdp_districts[!gdp_districts$gdp_districts %in% common_districts, ])
-colnames(gdp_districts_no_common) <- c("gdp_districts_no_common")
-
-# Remove common districts from shrug_districts
-shrug_districts_no_common <- as.data.frame(shrug_districts[!shrug_districts$shrug_districts %in% common_districts, ])
-colnames(shrug_districts_no_common) <- c("shrug_districts_no_common")
-
-potential_matches <- list()
-
-for (district1 in shrug_districts_no_common$shrug_districts_no_common) {
-  for (district2 in gdp_districts_no_common$gdp_districts_no_common) {
-    if (stringdist(district1, district2, method = "lv") <= 2) {
-      potential_matches[[length(potential_matches) + 1]] <- c(district1, district2)
-    }
-  }
-}
-
-# Print out potential matches
-for (match in potential_matches) {
-  print(paste("Potential match:", match[1], "-", match[2]))
-}
-
-###########
-
-# Create an empty data frame for the lookup table
-lookup_table <- data.frame(
-  gdp_districts_no_common = character(),
-  shrug_districts_no_common = character(),
-  stringsAsFactors = FALSE
-)
-
-# Fill the lookup table with the potential matches
-for (match in potential_matches) {
-  lookup_table <- rbind(lookup_table, data.frame(
-    gdp_districts_no_common = match[2],
-    shrug_districts_no_common = match[1],
-    stringsAsFactors = FALSE
-  ))
-}
-
-# Merge gdp with lookup_table
-gdp_2 <- merge(gdp_2, lookup_table, by.x = "district", by.y = "gdp_districts_no_common", all.x = TRUE)
-
-# Replace the original district names with the ones from df$district
-gdp_2$district <- ifelse(is.na(gdp_2$shrug_districts_no_common), gdp_2$district, gdp_2$shrug_districts_no_common)
-
-# Remove the extra column from the merge
-gdp_2$shrug_districts_no_common <- NULL
-
-gdp_2 <- gdp_2 %>%
-  filter(gdp_pc != -1)
-
-###
-
-# Remove from gdp_2 any rows that also exist in gdp
-gdp <- gdp %>%
-  anti_join(gdp_2, by = c("district", "Year"))
-
-# Bind the rows of gdp and the filtered gdp_2 together
-gdp <- gdp %>%
-  bind_rows(gdp_2) %>%
-  arrange(district, Year)
-
 df <- df %>%
-  left_join(gdp, by = c("district", "Year"))
-
-# Create a new variable indicating missing GDP
-df <- df %>%
-  mutate(gdp_missing = ifelse(is.na(gdp_pc), 1, 0),
-         Sex = ifelse(Sex == "F", 0, 
+  mutate(Sex = ifelse(Sex == "F", 0,
                       ifelse(Sex == "M", 1, NA)),
          year_1996 = ifelse(Year == 1996, 1, 0),
          year_1999 = ifelse(Year == 1999, 1, 0),
          year_2004 = ifelse(Year == 2004, 1, 0),
          year_2009 = ifelse(Year == 2009, 1, 0))
+
+write_xlsx(df, "output/20.5.2023 - TCPD_GE_All_States_2023-5-18.xlsx")
+
+################################################################################
+
+### Pushkar's script ###
+
+dynast_list_wiki_pdf_unclean <- read_excel("data/dynast_list_wiki_pdf_unclean.xlsx")
+dynast_names <- read_excel("data/dynast_names_matched_fuzzy.xlsx")
+
+df$dynast_wiki <- ifelse(df$Candidate %in% dynast_names$Candidate_trivedi_filtere_wiki, 1, 0)
+df$dynast_pdf <- ifelse(df$Candidate %in% dynast_names$Candidate_trivedi_filtered_pdf, 1, 0)
+df$dynast <- ifelse(df$dynast_wiki == 1 | df$dynast_pdf == 1, 1, 0)
+
+################################################################################
+
+df_list <- split(df, df$Year)
+
+df_1996 <- df_list[[1]]
+df_1999 <- df_list[[2]]
+df_2004 <- df_list[[3]]
+df_2009 <- df_list[[4]]
+
+### 1996 ###
+
+winners_1996 <- df_1996 %>% filter(Position == 1)
+losers_1996 <- df_1996 %>% filter(Position == 2)
+
+# Merge winners and losers by district, keeping only the necessary columns
+merged_1996 <- inner_join(winners_1996 %>% select(district, dynast_winner = dynast),
+                          losers_1996 %>% select(district, dynast_loser = dynast),
+                          by = "district")
+
+# Filter to keep only the districts where the winner is a dynast and the loser is a non-dynast, or vice versa
+filtered_1996 <- merged_1996 %>% filter((dynast_winner == 1 & dynast_loser == 0) | (dynast_winner == 0 & dynast_loser == 1))
+
+# Get the final dataset with all columns, keeping only the required rows
+final_1996 <- df_1996 %>% filter(district %in% filtered_1996$district)
+
+### 1999 ###
+
+winners_1999 <- df_1999 %>% filter(Position == 1)
+losers_1999 <- df_1999 %>% filter(Position == 2)
+
+merged_1999 <- inner_join(winners_1999 %>% select(district, dynast_winner = dynast),
+                          losers_1999 %>% select(district, dynast_loser = dynast),
+                          by = "district")
+
+filtered_1999 <- merged_1999 %>%
+  filter((dynast_winner == 1 & dynast_loser == 0) | (dynast_winner == 0 & dynast_loser == 1))
+
+final_1999 <- df_1999 %>% filter(district %in% filtered_1999$district)
+
+### 2004 ###
+
+winners_2004 <- df_2004 %>% filter(Position == 1)
+losers_2004 <- df_2004 %>% filter(Position == 2)
+
+merged_2004 <- inner_join(winners_2004 %>% select(district, dynast_winner = dynast),
+                          losers_2004 %>% select(district, dynast_loser = dynast),
+                          by = "district")
+
+filtered_2004 <- merged_2004 %>%
+  filter((dynast_winner == 1 & dynast_loser == 0) | (dynast_winner == 0 & dynast_loser == 1))
+
+final_2004 <- df_2004 %>% filter(district %in% filtered_2004$district)
+
+### 2009 ###
+
+winners_2009 <- df_2009 %>% filter(Position == 1)
+losers_2009 <- df_2009 %>% filter(Position == 2)
+
+merged_2009 <- inner_join(winners_2009 %>% select(district, dynast_winner = dynast),
+                          losers_2009 %>% select(district, dynast_loser = dynast),
+                          by = "district")
+
+filtered_2009 <- merged_2009 %>%
+  filter((dynast_winner == 1 & dynast_loser == 0) | (dynast_winner == 0 & dynast_loser == 1))
+
+final_2009 <- df_2009 %>%
+  filter(district %in% filtered_2009$district)
+
+### Merge ###
+
+df <- bind_rows(final_1996, final_1999, final_2004, final_2009)
+df_1996 <- df %>% filter(dynast == 1 & Year == 1996)
+df_1999 <- df %>% filter(dynast == 1 & Year == 1999)
+df_2004 <- df %>% filter(dynast == 1 & Year == 2004)
+df_2009 <- df %>% filter(dynast == 1 & Year == 2009)
+
+df <- df %>% mutate(dynast_winner = ifelse(dynast == 1 & Position == 1, 1, 0),
+                    D = ifelse(vote_share_diff >= 0, 1, 0))
+
+ols <- lm(max_light_diff ~ dynast_winner*year_1996
+          + dynast_winner*year_1999
+          + dynast_winner*year_2004
+          + dynast_winner*year_2009, data = df)
+
+summary(ols)
+
+df <- df %>% filter(dynast == 1)
+
+gg_srd = ggplot(data = df, aes(vote_share_diff, max_light_diff)) +
+  geom_point(aes(x = vote_share_diff, y = max_light_diff), data = df) +
+  geom_vline(xintercept = 0) +
+  xlab("Margin of victory") +
+  ylab("Δ nightlights")
+
+gg_srd + stat_smooth(aes(vote_share_diff, max_light_diff, group = D),
+                     method = "lm", formula = y ~ x + I(x^2))
+
+gg_srd + stat_smooth(data = df %>% filter(vote_share_diff > (-10) & vote_share_diff < 10),
+                     aes(vote_share_diff, max_light_diff, group = D),
+                     method = "lm", formula = y ~ x + I(x^2))
+
+rdd_reg <- RDestimate(max_light_diff ~ vote_share_diff, data = df, cutpoint = 0)
+summary(rdd_reg)
+plot(rdd_reg)
+
+# Plot residuals to check continuity assumption
+residuals <- residuals(rdd_reg)
+plot(df$vote_share_diff, residuals)
+
+# Check for discontinuity in other variables
+plot(df$vote_share_diff, df$population)
+
+# Include polynomial terms
+quad_rdd <- RDestimate(max_light_diff ~ poly(vote_share_diff, 2), data = df, cutpoint = 0, bw = 10)
+summary(quad_rdd)
+plot(quad_rdd)
+
+# Use heteroscedasticity-robust and cluster-robust standard errors
+robust_rdd <- RDestimate(max_light_diff ~ vote_share_diff, data = df, cutpoint = 0, se = "HC1")
+cluster_rdd <- RDestimate(max_light_diff ~ vote_share_diff, data = df, cutpoint = 0, cluster = df$district)  # replace with your actual cluster variable
+summary(robust_rdd)
+summary(cluster_rdd)
