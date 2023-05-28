@@ -216,15 +216,19 @@ data_grouped <- data %>%
   group_by(dynast_winner) %>%
   summarize(average_population = mean(population, na.rm = TRUE))
 
+data_grouped <- data_grouped %>%
+  mutate(percentage = average_population / sum(average_population) * 100)
+
 # Now, plot the data
 ggplot(data_grouped, aes(x = factor(dynast_winner), y = average_population, fill = factor(dynast_winner))) +
   geom_bar(stat = "identity") +
-  scale_fill_manual(values = c("blue", "red")) +
-  labs(x = "Dynast Winner", y = "Average Population", 
-       fill = "Dynast Winner",
-       title = "Average Population for Districts by Dynast Winner") +
-  theme_minimal()        
-         
+  scale_fill_manual(values = custom_palette, labels = c("Non dynast", "Dynast")) +
+  labs(x = "Type of politician in office", y = "Average population", 
+       fill = NULL,
+       title = "Average district population\nby type of politician in office") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), position = position_stack(vjust = 0.5), color = "white") +
+  theme(axis.text.x = element_blank())
+
 # Ensure the 'total_light2004' column is treated as numeric
 data$total_light2004 <- as.numeric(data$total_light2004)
 
@@ -234,54 +238,60 @@ data_2004 <- data %>% filter(year_2004 == 1)
 # Group by 'dynast_winner' and calculate average 'total_light2004'
 data_grouped <- data_2004 %>%
   group_by(dynast_winner) %>%
-  summarize(average_light = mean(total_light2004, na.rm = TRUE))
+  summarize(average_light = mean(total_light_cal2004, na.rm = TRUE))
 
-# Now, plot the data
+data_grouped <- data_grouped %>%
+  mutate(percentage_light = average_light / sum(average_light) * 100)
+
 ggplot(data_grouped, aes(x = factor(dynast_winner), y = average_light, fill = factor(dynast_winner))) +
   geom_bar(stat = "identity") +
-  scale_fill_manual(values = c("blue", "red")) +
-  labs(x = "Dynast Winner", y = "Average Total Light 2004", 
-       fill = "Dynast Winner",
-       title = "Average Total Light 2004 for Districts by Dynast Winner") +
-  theme_minimal()
+  scale_fill_manual(values = custom_palette, labels = c("Non dynast", "Dynast")) +
+  labs(x = "Type of politician in office", y = "Average total light", 
+       fill = NULL,
+       title = "Average total light\nby type of politician in office (2004)") +
+  geom_text(aes(label = paste0(round(percentage_light, 1), "%")), position = position_stack(vjust = 0.5), color = "white") +
+  theme(axis.text.x = element_blank())
 
-# Ensure the 'total_light2004' column is treated as numeric
-data$total_light2009 <- as.numeric(data$total_light2009)
-
-# Filter for year 2009
+data$total_light_cal2009 <- as.numeric(data$total_light_cal2009)
 data_2009 <- data %>% filter(year_2009 == 1)
 
-# Group by 'dynast_winner' and calculate average 'total_light2009'
 data_grouped <- data_2009 %>%
   group_by(dynast_winner) %>%
-  summarize(average_light = mean(total_light2009, na.rm = TRUE))
+  summarize(average_light = mean(total_light_cal2009, na.rm = TRUE))
 
-# Now, plot the data
+data_grouped <- data_grouped %>%
+  mutate(percentage_light = average_light / sum(average_light) * 100)
+
 ggplot(data_grouped, aes(x = factor(dynast_winner), y = average_light, fill = factor(dynast_winner))) +
   geom_bar(stat = "identity") +
-  scale_fill_manual(values = c("blue", "red")) +
-  labs(x = "Dynast Winner", y = "Average Total Light 2009", 
-       fill = "Dynast Winner",
-       title = "Average Total Light 2009 for Districts by Dynast Winner") +
-  theme_minimal()
+  scale_fill_manual(values = custom_palette, labels = c("Non dynast", "Dynast")) +
+  labs(x = "Type of politician in office", y = "Average total light", 
+       fill = NULL,
+       title = "Average total light\nby type of politician in office (2009)") +
+  geom_text(aes(label = paste0(round(percentage_light, 1), "%")), position = position_stack(vjust = 0.5), color = "white") +
+  theme(axis.text.x = element_blank())
 
-# Filter for year 2004 and dynast winners with vote share diff up to 5, and dynast losers with vote share diff from -5 to 0
+# Filter for year 2004 and dynast winners with vote share diff up to 10, and dynast losers with vote share diff from -5 to 0
 data_2004_dynast_voteshare <- data %>% 
-  filter(year_2004 == 1 & ((dynast_winner == 1 & vote_share_diff <= 5) | (dynast_winner == 0 & vote_share_diff >= -5 & vote_share_diff <= 0)))
+  filter(year_2004 == 1 & ((dynast_winner == 1 & vote_share_diff <= 10) | (dynast_winner == 0 & vote_share_diff >= -10 & vote_share_diff <= 0)))
 
 # Group by 'dynast_winner' and calculate average 'total_light2004'
 data_grouped <- data_2004_dynast_voteshare %>%
   group_by(dynast_winner) %>%
-  summarize(average_light = mean(total_light2004, na.rm = TRUE))
+  summarize(average_light = mean(total_light_cal2004, na.rm = TRUE))
 
-# Now, plot the data
+data_grouped <- data_grouped %>%
+  mutate(percentage_light = average_light / sum(average_light) * 100)
+
 ggplot(data_grouped, aes(x = factor(dynast_winner), y = average_light, fill = factor(dynast_winner))) +
   geom_bar(stat = "identity") +
-  scale_fill_manual(values = c("blue", "red")) +
-  labs(x = "Dynast Winner", y = "Average Total Light 2004", 
+  scale_fill_manual(values = custom_palette, labels = c("Non dynast", "Dynast")) +
+  geom_text(aes(label = paste0(round(percentage_light, 1), "%")), position = position_stack(vjust = 0.5), color = "white") +
+  labs(x = NULL, y = "Average Total Light 2004", 
        fill = "Dynast Winner",
-       title = "Average Total Light 2004 for Districts by Dynast Winner and Loser with up to 5 Vote Share Difference") +
-  theme_minimal()
+       title = "Average Total Light for Districts by Dynast Winner and Loser with up to 5 Vote Share Difference (2004)") +
+  theme(axis.text.x = element_blank())
+
 
 # Filter for year 2004 and dynast winners with vote share diff up to 5, and dynast losers with vote share diff from -5 to 0
 data_2009_dynast_voteshare <- data %>% 

@@ -11,14 +11,18 @@ library(sandwich)
 library(lmtest)
 library(multiwayvcov)
 library(xtable)
-
+library(ggplot2)
+library(lme4)
 
 setwd("/Users/valeria/Google Drive/Ph.D./BSE/Thesis/masters_thesis_BSE_2023/")
+
+### CLEAN & MERGE ##############################################################
 
 # nightlights and census merging, filtering down to top two candidates and relevant years
 
 df <- read_csv("data/TCPD_GE_All_States_2023-5-18.csv", show_col_types = F)
 nl <- read_csv("data/shrug_nl_wide.csv", show_col_types = F)
+affidavits <- read_csv("data/affidavits_clean.csv", show_col_types = F)
 key <- read_csv("data/shrug_pc11_district_key.csv", show_col_types = F)
 
 census_91 <- read.csv("data/shrug-v1.5.samosa-pop-econ-census-csv/shrug_pc91.csv")
@@ -55,6 +59,8 @@ df <- df %>%
   filter(!is.na(total_light1996) & (Position == 1 | Position == 2)) %>%
   arrange(district)
 
+### POPULATION #################################################################
+
 # predict population for missing years
 
 predict_population <- function(y1, y2, y3, x1 = 1991, x2 = 2001, x3 = 2011, predict_year = 2014){
@@ -79,7 +85,7 @@ df <- df %>%
   ) %>%
   ungroup()
 
-# adding vote_share_diff, lights_diff, and population columns
+### add vote_share_diff, lights_diff, and population columns ###################
 
 df_list <- split(df, df$Year)
 
@@ -169,6 +175,8 @@ df$education <- factor(df$MyNeta_education, levels = education_levels, ordered =
 df$education[df$education == "Others"] <- NA
 df$education <- as.numeric(df$education)
 
+### FE #########################################################################
+
 # create year dummies for fixed effects
 
 df <- df %>%
@@ -178,6 +186,15 @@ df <- df %>%
          year_1999 = ifelse(Year == 1999, 1, 0),
          year_2004 = ifelse(Year == 2004, 1, 0),
          year_2009 = ifelse(Year == 2009, 1, 0))
+
+# create state dummies for fixed effects
+
+state_dummies <- model.matrix(~State_Name-1, df)
+state_dummies <- as.data.frame(state_dummies)
+names(state_dummies) <- gsub("State_Name", "", names(state_dummies))
+df <- cbind(df, state_dummies)
+
+### DYNAST DUMMY ###############################################################
 
 # include dynast dummy
 
@@ -195,8 +212,12 @@ df_ols <- df %>% filter(Position == 1)
 df_ols$dynast <- as.factor(df_ols$dynast)
 
 ols <- lm(total_light_cal_diff ~ dynast:year_1999 + dynast:year_2004 + dynast:year_2009
-          + year_1999 + year_2004 + year_2009,
-          data = df_ols)
+          + year_1999 + year_2004 + year_2009 
+          + Andhra_Pradesh + Assam + Bihar + Chandigarh + Chhattisgarh + Goa 
+          + Gujarat + Haryana + Himachal_Pradesh + Jharkhand + Karnataka + Kerala 
+          + Lakshadweep + Madhya_Pradesh + Maharashtra + Odisha + Puducherry + Punjab 
+          + Rajasthan + Tamil_Nadu + Uttarakhand + West_Bengal,
+          data = df_ols) # Exclude Uttar Pradesh as baseline category
 
 summary(ols)
 
@@ -204,11 +225,15 @@ clust_se <- cluster.vcov(ols, df_ols$district)
 clust_coef <- coeftest(ols, clust_se)
 clust_coef
 
-# Controls
+### OLS WITH CONTROLS ##########################################################
 
 ols_controls <- lm(total_light_cal_diff ~ dynast:year_1999 + dynast:year_2004 + dynast:year_2009
                    + year_1999 + year_2004 + year_2009
-                   + population,
+                   + population
+                   + Andhra_Pradesh + Assam + Bihar + Chandigarh + Chhattisgarh + Goa 
+                   + Gujarat + Haryana + Himachal_Pradesh + Jharkhand + Karnataka + Kerala 
+                   + Lakshadweep + Madhya_Pradesh + Maharashtra + Odisha + Puducherry + Punjab 
+                   + Rajasthan + Tamil_Nadu + Uttarakhand + West_Bengal,
                    data = df_ols)
 
 summary(ols_controls)
@@ -217,18 +242,9 @@ clust_se_controls <- cluster.vcov(ols_controls, df_ols$district)
 clust_coef_controls <- coeftest(ols_controls, clust_se)
 clust_coef_controls
 
-df_ols$predicted_controls <- predict(ols_controls, df_ols)
-
-ggplot(df_ols, aes(x = predicted_controls, y = total_light_cal_diff)) + 
-  geom_point() + 
-  geom_smooth(method='lm', color='red', se=FALSE) +
-  labs(x = "Predicted total_light_cal_diff",
-       y = "Actual total_light_cal_diff",
-       title = "Actual vs Predicted Values") 
-
 ### RDD ########################################################################
 
-# keep only the districts where the winner is dynast an loser is non-dynast, or vice versa
+# keep only the districts where the winner is dynast and loser is non-dynast, or viceversa
 
 df_list <- split(df, df$Year)
 df_1996 <- df_list[[1]]
@@ -301,7 +317,193 @@ final_2009 <- df_2009 %>%
 
 ### Merge ###
 
-df <- bind_rows(final_1996, final_1999, final_2004, final_2009)
+df_ols_dynast_nondynast <- bind_rows(final_1996, final_1999, final_2004, final_2009)
+
+### OLS ONLY DYNASTS VS. NON DYNASTS ###########################################
+
+df_ols_dynast_nondynast <- df_ols_dynast_nondynast %>% filter(Position == 1)
+
+df_ols_dynast_nondynast$dynast <- as.factor(df_ols_dynast_nondynast$dynast)
+
+ols_dynast_nondynast <- lm(total_light_cal_diff ~ dynast:year_1999 + dynast:year_2004 + dynast:year_2009
+          + year_1999 + year_2004 + year_2009 
+          + Andhra_Pradesh + Assam + Bihar + Gujarat + Haryana + Himachal_Pradesh 
+          + Jharkhand + Karnataka + Kerala + Madhya_Pradesh + Maharashtra + Odisha 
+          + Puducherry + Punjab + Rajasthan + Tamil_Nadu + Uttarakhand + West_Bengal
+          + population,
+          data = df_ols_dynast_nondynast)
+
+
+summary(ols_dynast_nondynast)
+
+clust_se <- cluster.vcov(ols_dynast_nondynast, df_ols_dynast_nondynast$district)
+clust_coef <- coeftest(ols_dynast_nondynast, clust_se)
+clust_coef
+
+### RDD 10% VOTE MARGIN ########################################################
+
+df_rdd_10 <- df %>% filter(Position == 1 & vote_share_diff >= -10 & vote_share_diff <= 10)
+
+df_rdd_10$dynast <- as.factor(df_rdd_10$dynast)
+
+ols_rdd_10 <- lm(total_light_cal_diff ~ dynast:year_1999 + dynast:year_2004 + dynast:year_2009
+                 + year_1999 + year_2004 + year_2009 
+                 + Andhra_Pradesh + Assam + Bihar + Gujarat + Haryana + Himachal_Pradesh 
+                 + Jharkhand + Karnataka + Kerala + Madhya_Pradesh + Maharashtra + Odisha 
+                 + Punjab + Rajasthan + Tamil_Nadu + Uttarakhand + West_Bengal + Chhattisgarh
+                 + population,
+                 data = df_rdd_10)
+
+summary(ols_rdd_10)
+
+clust_se <- cluster.vcov(ols_rdd_10, df_rdd_10$district)
+clust_coef <- coeftest(ols_rdd_10, clust_se)
+clust_coef
+
+### RDD 5% VOTE MARGIN #########################################################
+
+df_rdd_5 <- df %>% filter(Position == 1 & vote_share_diff >= -5 & vote_share_diff <= 5)
+
+df_rdd_5$dynast <- as.factor(df_rdd_5$dynast)
+
+ols_rdd_5 <- lm(total_light_cal_diff ~ dynast:year_1999 + dynast:year_2004 + dynast:year_2009
+                + year_1999 + year_2004 + year_2009 
+                + Andhra_Pradesh + Assam + Bihar + Gujarat + Haryana + Himachal_Pradesh 
+                + Jharkhand + Karnataka + Kerala + Madhya_Pradesh + Maharashtra + Odisha 
+                + Punjab + Rajasthan + Tamil_Nadu + Uttarakhand + Chhattisgarh
+                + population,
+                data = df_rdd_5)
+
+summary(ols_rdd_5)
+
+clust_se <- cluster.vcov(ols_rdd_5, df_rdd_5$district)
+clust_coef <- coeftest(ols_rdd_5, clust_se)
+clust_coef
+
+### RDD 2.5% VOTE MARGIN #######################################################
+
+df_rdd_2_5 <- df %>% filter(Position == 1 & vote_share_diff >= -2.5 & vote_share_diff <= 2.5)
+
+df_rdd_2_5$dynast <- as.factor(df_rdd_2_5$dynast)
+
+ols_rdd_2_5 <- lm(total_light_cal_diff ~ dynast:year_1999 + dynast:year_2004 + dynast:year_2009
+                  + year_1999 + year_2004 + year_2009 
+                  + Maharashtra + Rajasthan + Gujarat + Karnataka + Bihar
+                  + Punjab + Andhra_Pradesh + Odisha + Madhya_Pradesh 
+                  + Chhattisgarh + Uttarakhand + Jharkhand + Kerala + Himachal_Pradesh
+                  + Tamil_Nadu
+                  + population,
+                  data = df_rdd_2_5)
+
+summary(ols_rdd_2_5)
+
+clust_se <- cluster.vcov(ols_rdd_2_5, df_rdd_2_5$district)
+clust_coef <- coeftest(ols_rdd_2_5, clust_se)
+clust_coef
+
+## INTERACTIONS ################################################################
+
+ols_interactions <- lm(total_light_cal_diff ~ dynast:year_1999 + dynast:year_2004 + dynast:year_2009
+                       + year_1999 + year_2004 + year_2009 
+                       + Maharashtra + Rajasthan + Gujarat + Karnataka + Bihar
+                       + Punjab + Andhra_Pradesh + Odisha + Madhya_Pradesh 
+                       + Chhattisgarh + Uttarakhand + Jharkhand + Kerala + Himachal_Pradesh
+                       + Tamil_Nadu
+                       + population + dynast:population
+                       + Sex + dynast:Sex
+                       + No_Terms + dynast:No_Terms,
+                       data = df_rdd_2_5)
+
+summary(ols_interactions)
+
+clust_se <- cluster.vcov(ols_interactions, df_rdd_2_5$district)
+clust_coef <- coeftest(ols_interactions, clust_se)
+clust_coef
+
+## AFFIDAVITS ##################################################################
+
+df$Candidate <- tolower(df$Candidate)
+affidavits$adr_cand_name <- iconv(affidavits$adr_cand_name, "UTF-8", "ASCII//TRANSLIT")
+affidavits$adr_cand_name <- tolower(affidavits$adr_cand_name)
+
+affidavits <- affidavits %>% rename(Candidate = adr_cand_name,
+                                    Year = year)
+
+affidavits <- affidavits %>% arrange(Candidate, Year)
+
+df_with_affidavits <- merge(df, affidavits[, c("Candidate", "Year", "age", "ed",
+                                               "num_crim", "assets", "liabilities",
+                                               "adr_major_crime")],
+                            by = c("Candidate"))
+
+write_csv(df_with_affidavits, "output/28.05.2023 - df_with_affidavits.csv")
+
+## TRANSITION ##################################################################
+
+df_transition <- df %>% filter(Position == 1)
+
+setDT(df_transition)
+setorder(df_transition, district, Year)
+
+df_transition[, dynast_2004 := shift(dynast, 1), by = district]
+df_transition[, dynast_1999 := shift(dynast, 2), by = district]
+
+df_transition <- df_transition %>% filter(Year == 2009)
+
+df_transition <- df_transition %>%
+  mutate(transition = case_when(dynast_1999 == 1 & dynast_2004 == 1 & dynast == 0 ~ "Dynastic to Non-Dynastic",
+                                     dynast_1999 == 0 & dynast_2004 == 0 & dynast == 1 ~ "Non-Dynastic to Dynastic",
+                                     dynast_1999 == 0 & dynast_2004 == 0 & dynast == 0 ~ "Non-Dynastic to Non-Dynastic",
+                                     dynast_1999 == 1 & dynast_2004 == 1 & dynast == 1 ~ "Dynastic to Dynastic",
+                                     TRUE ~ NA))
+
+df_transition <- df_transition %>%
+  filter(transition == "Non-Dynastic to Non-Dynastic" | transition == "Non-Dynastic to Dynastic") %>%
+  mutate(transition = ifelse(transition == "Non-Dynastic to Dynastic", 1, 0))
+
+write_csv(df_transition, "output/28.05.2023 - df_transition.csv")
+
+################################################################################
+
+
+df_party <- as.factor(df_with_affidavits$Party)
+df_party <- model.matrix(~df_party - 1) # The '- 1' removes intercept column
+df_with_affidavits <- cbind(df_with_affidavits, df_party)
+
+ggplot(df_with_affidavits, aes(x = Party, y = total_light_cal_diff)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Party", y = "Nightlights Growth", title = "Nightlights Growth by Party")
+
+df_average_growth <- df %>%
+  group_by(Party) %>%
+  summarize(average_growth = mean(total_light_cal_diff, na.rm = TRUE))
+
+ggplot(df_average_growth, aes(x = Party, y = average_growth)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Party", y = "Average Nightlights Growth", title = "Average Nightlights Growth by Party")
+
+df_average_growth <- df %>%
+  group_by(Sex) %>%
+  summarize(average_growth = mean(total_light_cal_diff, na.rm = TRUE)) %>%
+  na.omit()
+
+ggplot(df_average_growth, aes(x = Sex, y = average_growth)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Sex", y = "Average Nightlights Growth", title = "Average Nightlights Growth by Sex")
+
+df_average_growth <- df_with_affidavits %>%
+  group_by(ed) %>%
+  summarize(average_growth = mean(total_light_diff, na.rm = TRUE)) %>%
+  na.omit()
+
+ggplot(df_average_growth, aes(x = ed, y = average_growth)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Education Level", y = "Average Nightlights Growth", title = "Average Nightlights Growth by Education Level")
+
+
+################################################################################
 
 write_csv(df, "output/26.5.2023 - TCPD_GE_All_States_2023-5-18.csv")
 
